@@ -1,0 +1,64 @@
+---
+- name: Setup Web Server and Configure Splunk Logging
+  hosts: web_servers
+  become: yes
+  vars:
+    splunk_hec_token: "9f5f298c-505b-46e6-be25-5146270c39a7"
+    splunk_hec_url: "http://18.0.12.246:8088/services/collector/event"
+
+  tasks:
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Nginx
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Create Splunk logging configuration
+      copy:
+        dest: /etc/nginx/splunk_logging.conf
+        content: |
+          log_format splunk '$remote_addr - $remote_user [$time_local] "$request" '
+                           '$status $body_bytes_sent "$http_referer" '
+                           '"$http_user_agent" "$http_x_forwarded_for"';
+
+          access_log /var/log/nginx/access.log splunk;
+
+    - name: Include Splunk logging in Nginx config
+      lineinfile:
+        path: /etc/nginx/nginx.conf
+        insertafter: 'http {'
+        line: 'include /etc/nginx/splunk_logging.conf;'
+
+    - name: Restart Nginx to apply changes
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Install curl for sending logs to Splunk
+      apt:
+        name: curl
+        state: present
+
+    - name: Configure Splunk HTTP Event Collector
+      copy:
+        dest: /usr/local/bin/splunk_log.sh
+        mode: '0755'
+        content: |
+          #!/bin/bash
+          LOGFILE="/var/log/nginx/access.log"
+          while inotifywait -e modify $LOGFILE; do
+              curl -k -H "Authorization: Splunk {{ splunk_hec_token }}" \
+                   -d "{\"event\":\"$(tail -n 1 $LOGFILE)\"}" \
+                   {{ splunk_hec_url }};
+          done
+
+    - name: Start log forwarding
+      command: /usr/local/bin/splunk_log.sh &
+      async: 0
+      poll: 0
