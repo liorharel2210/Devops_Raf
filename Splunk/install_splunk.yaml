@@ -1,0 +1,40 @@
+---
+- name: Install Splunk on Docker
+  hosts: windows
+  tasks:
+    - name: Install Docker
+      win_chocolatey:
+        name: docker-desktop
+        state: present
+
+    - name: Start Docker
+      win_service:
+        name: com.docker.service
+        start_mode: auto
+        state: started
+
+    - name: Pull Splunk Docker image
+      win_shell: |
+        docker pull splunk/splunk:latest
+
+    - name: Create directories for Splunk configuration
+      win_file:
+        path: C:\splunk
+        state: directory
+
+    - name: Copy CA certificate
+      win_copy:
+        src: /root/ansible/splunk/ca.crt
+        dest: C:\splunk\ca.crt
+
+    - name: Run Splunk container
+      win_shell: |
+        docker run -d --name splunk \
+          -e SPLUNK_START_ARGS="--accept-license" \
+          -e SPLUNK_PASSWORD=Adi@12345 \
+          -p 8000:8000 \
+          -p 8088:8088 \
+          -v C:\splunk:/opt/splunk/etc/apps \
+          -v C:\splunk\ca.crt:/opt/splunk/etc/cacert.pem \
+          splunk/splunk:latest
+

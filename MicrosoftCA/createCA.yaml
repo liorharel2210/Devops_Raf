@@ -1,0 +1,28 @@
+---
+- name: Set up Microsoft Certification Authority
+  hosts: [windows]
+  tasks:
+    - name: Install the AD CS role
+      win_feature:
+        name: AD-Certificate
+        state: present
+
+    - name: Install the CA role service
+      win_feature:
+        name: ADCS-Cert-Authority
+        state: present
+
+    - name: Configure the CA
+      win_shell: |
+        Install-AdcsCertificationAuthority -CAType EnterpriseRootCA -CACommonName "MyCA" -KeyLength 2048 -HashAlgorithm SHA256 -ValidityPeriod Years -ValidityPeriodUnits 5 -Force
+      register: ca_config
+
+    - name: Start the Certificate Services
+      win_service:
+        name: CertSvc
+        start_mode: auto
+        state: started
+
+    - name: Output CA configuration results
+      debug:
+        var: ca_config.stdout
